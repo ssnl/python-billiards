@@ -229,7 +229,7 @@ class Billiard:
         new_vel = obs.collide(pos, vel, radius)
         self.balls_velocity[idx] = new_vel
 
-    def evolve(self, end_time):
+    def evolve(self, end_time, *, max_collisions=None, max_velocity=None):
         """Advance the simulation until the given time is reached.
 
         Will call bounce_ballball and bounce_ballobstacle repeatetly (which one
@@ -255,7 +255,15 @@ class Billiard:
             else:
                 coll = self.bounce_ballobstacle()
 
+            if max_velocity is not None:
+                curr_max = np.linalg.norm(self.balls_velocity, axis=-1).max()
+                if curr_max > max_velocity:
+                    raise RuntimeError(f'curr max velocity = {curr_max:.2g} exceeds threshold {max_velocity:.2g}')
+
             collisions.append(coll)
+
+            if max_collisions is not None and len(collisions) > max_collisions:
+                raise RuntimeError(f'number of collisions exceeds {max_collisions}')
 
         assert end_time < min(self.toi_next[0], self.obstacles_next[0])
         self._move(end_time)

@@ -42,7 +42,7 @@ except ImportError:  # pragma: no cover
     )
 
 try:
-    from tqdm import trange
+    from tqdm.auto import trange
 except ImportError:  # pragma: no cover
     trange = range
     warnings.warn(
@@ -158,7 +158,7 @@ class CircleCollection(Collection):  # pragma: no cover
             super().draw(renderer)
 
 
-def default_fig_and_ax(figsize=(8, 6), fig=None, ax=None):
+def default_fig_and_ax(figsize=(8, 6), fig=None, ax=None, tight_layout=True):
     """Create a 800x600 figure with tight layout and equal aspect axes.
 
     Figure is set the use tight layout, axes will use equal aspect.
@@ -175,7 +175,8 @@ def default_fig_and_ax(figsize=(8, 6), fig=None, ax=None):
     # setup figure if needed and use tight layout
     if fig is None:
         fig = plt.figure(figsize=(8, 6), dpi=100)
-    fig.set_tight_layout(True)
+    if tight_layout:
+        fig.set_tight_layout(True)
 
     # setup axes if needed and use equal aspect
     if ax is None:
@@ -205,7 +206,7 @@ def plot_obstacles(bld, ax, color="C2", **kwargs):
     return obs_artists
 
 
-def plot_balls(bld, ax, color="C0", **kwargs):
+def plot_balls(bld, ax, color="C0", always_draw_marker=False, marker='x', marker_size=20, marker_color=None, **kwargs):
     """Draw the balls in the billiard.
 
     Balls with zero radius (i.e. point particles) will be drawn using scatter.
@@ -226,7 +227,10 @@ def plot_balls(bld, ax, color="C0", **kwargs):
 
     # draw point particles only as markers
     draw_as_circles = radii > 0
-    draw_as_markers = np.logical_not(draw_as_circles)
+    if always_draw_marker:
+        draw_as_markers = slice(None)
+    else:
+        draw_as_markers = np.logical_not(draw_as_circles)
 
     # draw proper balls as circles
     circles = CircleCollection(
@@ -239,14 +243,18 @@ def plot_balls(bld, ax, color="C0", **kwargs):
     )
     ax.add_collection(circles)
 
+    if marker_color is None:
+        marker_color = color
+
     # draw point particles
     points = ax.scatter(
         pos[draw_as_markers, 0],
         pos[draw_as_markers, 1],
-        s=20,
-        marker="x",
-        color=color,
-        zorder=0,
+        lw=0,
+        s=marker_size,
+        marker=marker,
+        color=marker_color,
+        zorder=10,
         **kwargs,
     )
 
@@ -282,14 +290,15 @@ def plot_velocities(bld, ax, color="C1", arrow_factor=1, **kwargs):
         scale=1 / arrow_factor,
         width=0.004,
         color=color,
-        zorder=1,
+        zorder=20,
         **kwargs,
     )
 
     return arrows
 
 
-def plot(bld, fig=None, ax=None, velocity_arrow_factor=1):
+def plot(bld, fig=None, ax=None, velocity_arrow_factor=1, always_draw_marker=False, 
+         marker='x', marker_size=20, marker_color=None, tight_layout=True):
     """Plot the given billiard for the current moment.
 
     Args:
@@ -312,11 +321,11 @@ def plot(bld, fig=None, ax=None, velocity_arrow_factor=1):
         plot use fig.savefig("savename.png").
 
     """
-    fig, ax = default_fig_and_ax(fig=fig, ax=ax)
+    fig, ax = default_fig_and_ax(fig=fig, ax=ax, tight_layout=tight_layout)
 
     # plot billiard obstacles and balls
     plot_obstacles(bld, ax)
-    plot_balls(bld, ax)
+    plot_balls(bld, ax, always_draw_marker=always_draw_marker, marker=marker, marker_size=marker_size, marker_color=marker_color)
     if velocity_arrow_factor > 0:
         plot_velocities(bld, ax, arrow_factor=velocity_arrow_factor)
 
@@ -328,7 +337,9 @@ def plot(bld, fig=None, ax=None, velocity_arrow_factor=1):
 
 
 def animate(
-    bld, end_time, fps=30, fig=None, ax=None, velocity_arrow_factor=1, **kwargs
+    bld, end_time, fps=30, fig=None, ax=None, velocity_arrow_factor=1, 
+    always_draw_marker=False, marker='x', marker_size=20, marker_color=None,
+    tqdm=True, tight_layout=True, **kwargs
 ):
     """Animate the billiard plot.
 
@@ -372,7 +383,7 @@ def animate(
     time = []
     positions = []
     velocities = []
-    for i in trange(frames):
+    for i in (trange if tqdm else range)(frames):
         bld.evolve(start_time + i / fps)
 
         time.append(bld.time)
@@ -380,11 +391,11 @@ def animate(
         velocities.append(bld.balls_velocity.copy())
 
     # setup plot
-    fig, ax = default_fig_and_ax(fig=fig, ax=ax)
+    fig, ax = default_fig_and_ax(fig=fig, ax=ax, tight_layout=tight_layout)
 
     # plot billiard obstacle and balls
     plot_obstacles(bld, ax)
-    circles, points = plot_balls(bld, ax)
+    circles, points = plot_balls(bld, ax, always_draw_marker=always_draw_marker, marker=marker, marker_size=marker_size, marker_color=marker_color)
     if velocity_arrow_factor > 0:
         arrows = plot_velocities(bld, ax, arrow_factor=velocity_arrow_factor)
 
@@ -394,7 +405,10 @@ def animate(
 
     # draw point particles only as markers
     draw_as_circles = np.asarray(bld.balls_radius) > 0
-    draw_as_markers = np.logical_not(draw_as_circles)
+    if always_draw_marker:
+        draw_as_markers = slice(None)
+    else:
+        draw_as_markers = np.logical_not(draw_as_circles)
 
     def init():
         time_text.set_text("")
